@@ -1,767 +1,698 @@
-#include <iostream>
-#include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <pthread.h>
-#include <memory.h>
-#include <sys/socket.h>
-#include <signal.h>
-#include <sys/types.h>
-#include <string.h>
-#include <netinet/in.h>
-#include <stdarg.h>
-#include <sys/ioctl.h>
-#include <arpa/inet.h>
-#include <sys/time.h>
-#include <errno.h>
-#include <netdb.h>
-#include <fcntl.h>
 #include <bits/stdc++.h>
-#include <algorithm>
+#include <stdarg.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <pthread.h>
+#include <openssl/sha.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#define SA struct sockaddr
 using namespace std;
-long long int serv_port_num; //= 6127; 
-char buf[1024], OWN_IP_ADDRESS[32];
-unordered_map<string, string> userIDP;
-unordered_map<string, pair<string, list<string>>> groupsTable;
-unordered_map<string, list<string>> joinRequestTable;
-unordered_map<string, list<pair<string, pair<string, int>>>> filesInfo;
-list<string> downloads;
-string current_user = "";
-struct client_info
+
+string tracker_ip, uploadFile;
+uint16_t tracker_port;
+unordered_map<string, set < string>> grp_members;
+unordered_map<string, set < string>> grp_requests;
+unordered_map<string, string> login;
+unordered_map<string, bool> checklogin;
+
+unordered_map<string, string> convert_port;
+unordered_map<string, string> piece_wise;
+unordered_map<string, string> cur_file_size;
+unordered_map<string, string> admin_groups;
+vector<string> group_list;
+
+
+
+bool ispath(const string &stringS)
 {
-
-    int comm_socket_fd;
-    struct sockaddr_in client_addr;
-};
-void pGT()
-{
-    cout << "\nGroups table is:\n";
-    for (auto it : groupsTable)
-    {
-        cout << (it.first) << ": " << it.second.first;
-        for (auto it2 : it.second.second)
-            cout << " " << it2 << " ";
-        cout << endl;
-    }
-}
-void puserIDP()
-{
-    cout << "\nuserIDP table is:\n";
-    for (auto it : userIDP)
-    {
-        cout << (it.first) << ": " << it.second;
-        cout << endl;
-    }
-}
-void pJRT()
-{
-    cout << "\njoin request table is:\n";
-    for (auto it : joinRequestTable)
-    {
-        cout << (it.first) << ": ";
-        for (auto it2 : it.second)
-            cout << " " << it2 << " ";
-        cout << endl;
-    }
-}
-static void *service_client_module(void *arg)
-{
-    struct client_info *a = (struct client_info *)arg;
-    cout << "entered service client module\n";
-    // pair<long long int, struct sockaddr_in> clientDetails= (struct client_info *)arg;
-    // long long int comm_socket_fd = clientDetails.first;
-
-    // long long int bytes_transferred = 0;
-
-    // struct sockaddr_in client_addr;
-
-    // client_addr = clientDetails.second;
-    struct client_info *client_info_t = (struct client_info *)arg;
-    int comm_socket_fd = client_info_t->comm_socket_fd;
-
-    int bytes_transferred = 0;
-
-    struct sockaddr_in client_addr;
-
-    client_addr = client_info_t->client_addr;
-    socklen_t addr_len = sizeof(struct sockaddr_in);
-
-    
-    printf("New thread created ....\n");
-    char str[4096];
-    string userID, pswd, groupID;
-    while (1)
-    {
-
-        memset(buf, 0, sizeof(buf));
-        // bytes_transferred = recvfrom(comm_socket_fd, (char *)buf, sizeof(buf), 0, (struct sockaddr *)&client_addr, &addr_len);
-        bytes_transferred = read(comm_socket_fd, buf, 1024);
-        int i;
-        string cmd = "";
-        for (i = 0; i < sizeof(buf); i++)
-        {
-            if (buf[i] == ' ' || buf[i] == '\0')
-            {
-                break;
-            }
-            cmd += buf[i];
-        }
-        if (cmd == "create_user")
-        {
-            if (current_user != "")
-            {
-                cout << "Please logout first.Then create new account\n";
-            }
-            else
-            {
-                cout << "entered create user\n";
-                //memset(buf, 0, sizeof(buf));
-                //bytes_transferred = read(comm_socket_fd,buf, 1024);
-                //cout<<bytes_transferred<<endl;
-                //printf("%s",buf);
-                //string temp(buf);
-                userID = "";
-                for (i = i + 1; i < sizeof(buf); i++)
-                {
-                    if (buf[i] == ' ')
-                    {
-                        break;
-                    }
-                    userID += buf[i];
-                }
-
-                cout << "Username entered is:" << userID << endl;
-                //memset(buf, 0, sizeof(buf));
-                //bytes_transferred = read(comm_socket_fd, buf, 1024);
-                //pswd = string(buf);
-                pswd = "";
-                for (i = i + 1; i < sizeof(buf); i++)
-                {
-                    if (buf[i] == '\0')
-                    {
-                        break;
-                    }
-                    pswd += buf[i];
-                }
-                cout << "password is:" << pswd << endl;
-                userIDP[userID] = pswd;
-                cout << "Account Successfully Created\n";
-            }
-        }
-        else if (cmd == "login")
-        {
-            if (current_user != "")
-                cout << "Already " << current_user << " logged in. Please logout from " << current_user << " account first\n";
-            else
-            {
-                userID = "";
-                for (i = i + 1; i < sizeof(buf); i++)
-                {
-                    if (buf[i] == ' ')
-                    {
-                        break;
-                    }
-                    userID += buf[i];
-                }
-
-                cout << "Username entered is:" << userID << endl;
-                //memset(buf, 0, sizeof(buf));
-                //bytes_transferred = read(comm_socket_fd, buf, 1024);
-                //pswd = string(buf);
-                pswd = "";
-                for (i = i + 1; i < sizeof(buf); i++)
-                {
-                    if (buf[i] == '\0')
-                    {
-                        break;
-                    }
-                    pswd += buf[i];
-                }
-                cout << "password is:" << pswd << endl;
-                if (userIDP.find(userID) == userIDP.end())
-                    cout << "Username doesn't exist or invalid. Please enter correct user name\n";
-                else
-                {
-
-                    //printf("%s \t %s \n", pswd, userIDP[userID]);
-                    //cout << pswd << endl;
-                    //cout << userIDP[userID] << endl;
-                    if (pswd == userIDP[userID])
-                    {
-                        cout << "login successful\n";
-                        current_user = userID;
-                    }
-                    else
-                        cout << "invalid password\n";
-                }
-            }
-        }
-        else if (cmd == "create_group")
-        {
-            if (current_user == "")
-                cout << "Please login to create a group\n";
-            else
-            {
-                groupID = "";
-                for (i = i + 1; i < sizeof(buf); i++)
-                {
-                    if (buf[i] == '\0')
-                    {
-                        break;
-                    }
-                    groupID += buf[i];
-                }
-
-                cout << "group ID entered is:" << groupID << endl;
-                if (groupsTable.find(groupID) != groupsTable.end())
-                    cout << "Already this is present. Cannot create again. Please check.\n";
-                else
-                {
-                    list<string> l;
-                    l.push_back(current_user);
-                    groupsTable[groupID].first = current_user;
-                    groupsTable[groupID].second = l;
-                    cout << groupID << " Group created successfully\n";
-                }
-            }
-        }
-        else if (cmd == "join_group")
-        {
-            groupID = "";
-            for (i = i + 1; i < sizeof(buf); i++)
-            {
-                if (buf[i] == '\0')
-                {
-                    break;
-                }
-                groupID += buf[i];
-            }
-            cout << "group ID entered is:" << groupID << endl;
-            if (groupsTable.find(groupID) == groupsTable.end())
-                cout << "Group doesn't exist. Please check.\n";
-            else
-            {
-                if (joinRequestTable.find(groupID) == joinRequestTable.end())
-                {
-                    list<string> l;
-                    joinRequestTable[groupID] = l;
-                }
-                joinRequestTable[groupID].push_back(current_user);
-                cout << "Join request submitted\n";
-            }
-        }
-        else if (cmd == "leave_group")
-        {
-            groupID = "";
-            for (i = i + 1; i < sizeof(buf); i++)
-            {
-                if (buf[i] == '\0')
-                {
-                    break;
-                }
-                groupID += buf[i];
-            }
-            cout << "group ID entered is:" << groupID << endl;
-            if (groupsTable.find(groupID) == groupsTable.end())
-            {
-                cout << "Invalid group ID. Group doesn't exist or you are already not a member of this group\n";
-            }
-            else
-            {
-                int flag = 0;
-                //list<string> l(joinRequestTable[groupID]);
-                for (auto it = groupsTable[groupID].second.begin(); it != groupsTable[groupID].second.end(); it++)
-                    if (*it == current_user)
-                    {
-                        groupsTable[groupID].second.erase(it);
-                        cout << "Left group\n";
-                        flag = 1;
-                        break;
-                    }
-                if (flag == 0)
-                    cout << "you are not present in the group.So no need to put leave request\n";
-            }
-        }
-        else if (cmd == "requests")
-        {
-            for (i = i + 1; i < sizeof(buf); i++)
-            {
-                if (buf[i] == ' ')
-                {
-                    break;
-                }
-            }
-
-            //cout << "Username entered is:"<<userID << endl;
-            //memset(buf, 0, sizeof(buf));
-            //bytes_transferred = read(comm_socket_fd, buf, 1024);
-            //pswd = string(buf);
-            groupID = "";
-            for (i = i + 1; i < sizeof(buf); i++)
-            {
-                if (buf[i] == '\0')
-                {
-                    break;
-                }
-                groupID += buf[i];
-            }
-            //cout << "groupID is:" << groupID << endl;
-
-            if (joinRequestTable.find(groupID) == joinRequestTable.end())
-            {
-                cout << "Invalid group ID. Group is empty or doesn't exist\n";
-            }
-            else
-            {
-                if (groupsTable[groupID].first == current_user)
-                {
-                    list<string> l(joinRequestTable[groupID]);
-                    cout << groupID << ":\n";
-                    for (auto it : joinRequestTable[groupID])
-                        cout << it << "\t";
-                    cout << endl;
-                }
-                else
-                    cout << "You are not the owner of this group: " << groupID << endl;
-            }
-        }
-        else if (cmd == "accept_request")
-        {
-            groupID = "";
-            for (i = i + 1; i < sizeof(buf); i++)
-            {
-                if (buf[i] == ' ')
-                {
-                    break;
-                }
-                groupID += buf[i];
-            }
-            //cout << "groupID is:" << groupID << endl;
-            userID = "";
-            for (i = i + 1; i < sizeof(buf); i++)
-            {
-                if (buf[i] == '\0')
-                {
-                    break;
-                }
-                userID += buf[i];
-            }
-
-            //cout << "Username entered is:" << userID << endl;
-
-            //memset(buf, 0, sizeof(buf));
-            //bytes_transferred = read(comm_socket_fd, buf, 1024);
-            //pswd = string(buf);
-            // list<string> l;
-            // l.push_back(current_user);
-            // groupsTable[groupID].first = current_user;
-            // groupsTable[groupID].second=l;
-            if (joinRequestTable.find(groupID) == joinRequestTable.end())
-            {
-                cout << "Invalid group ID. Group is empty or doesn't exist\n";
-            }
-            else
-            {
-                if (current_user == groupsTable[groupID].first)
-                {
-                    //list<string> l(joinRequestTable[groupID]);
-                    if (joinRequestTable[groupID].empty())
-                        cout << "No requests are there in present group\n";
-                    else
-                    {
-                        int flag = 0;
-                        //cout<<groupID<<":\n";
-                        for (auto it = joinRequestTable[groupID].begin(); it != joinRequestTable[groupID].end(); it++)
-                        {
-                            if (*it == userID)
-                            {
-                                joinRequestTable[groupID].erase(it);
-                                groupsTable[groupID].second.push_back(userID);
-                                cout << "Accepted request of " + userID + " \n";
-                                flag = 1;
-                                break;
-                            }
-                        }
-                        if (flag == 0)
-                            cout << "no request from " + userID + " \n";
-                    }
-                }
-                else
-                    cout << "You are not the owner of the group.So you cannot accept the requests\n";
-            }
-        }
-        else if (cmd == "list_groups")
-        {
-            for (auto it : groupsTable)
-            {
-                cout << (it.first) << " ";
-                //<< " : owner name:" << it.second.first << endl;
-                // for (auto it2 : it.second.second)
-                //     cout << " " << it2 << " ";
-                // cout << endl;
-            }
-            cout << endl;
-        }
-        else if (cmd == "logout")
-        {
-            cout << current_user << ", You logged out successfully.\n";
-            current_user = "";
-        }
-        else if (cmd == "upload_file")
-        {
-            if (current_user == "")
-            {
-                cout << "Please login first\n";
-            }
-            else
-            {
-                string filepath = "";
-                for (i = i + 1; i < sizeof(buf); i++)
-                {
-                    if (buf[i] == ' ')
-                    {
-                        break;
-                    }
-                    filepath += buf[i];
-                }
-                groupID = "";
-                for (i = i + 1; i < sizeof(buf); i++)
-                {
-                    if (buf[i] == '\0')
-                    {
-                        break;
-                    }
-                    groupID += buf[i];
-                }
-                // int port_no;
-                // string s = "";
-                // for (i = i + 1; i < sizeof(buf); i++)
-                // {
-                //     if (buf[i] == '\0')
-                //     {
-                //         break;
-                //     }
-                //     s += buf[i];
-                // }
-                // int num = stoi(s);
-                // port_no = htons(num);
-                if (groupsTable.find(groupID) == groupsTable.end())
-                    cout << "Group doesn't exist. Please check.\n";
-                else
-                {
-                    cout << "Please enter your port number\n";
-                    bzero(str, sizeof(str));
-                    int bytes_transferred = read(comm_socket_fd, str, sizeof(str));
-                    cout << "port number of uploader:" << str << endl;
-                    string s = (string)str;
-                    //cout << "after converting into string:" << s << endl;
-                    int n = stoi(s);
-                    //cout << "after converting into number:" << n << endl;
-                    // int port_no = htons(n);
-                    // cout<<"after converting into port no:"<<port_no<<endl;
-                    if (filesInfo.find(filepath) == filesInfo.end())
-                    {
-                        list<string> l;
-                        joinRequestTable[filepath] = l;
-                    }
-                    filesInfo[filepath].push_back({groupID, {"127.0.0.1", n}});
-                    cout << "\nfilesInfo table is:\n";
-                    for (auto it : filesInfo)
-                    {
-                        cout << (it.first) << ": ";
-                        for (auto it2 : it.second)
-                            cout << " " << it2.first << "," << it2.second.first << "," << it2.second.second << " ";
-                        cout << endl;
-                    }
-                }
-            }
-        }
-        else if (cmd == "list_files")
-        {
-            groupID = "";
-            for (i = i + 1; i < sizeof(buf); i++)
-            {
-                if (buf[i] == '\0')
-                {
-                    break;
-                }
-                groupID += buf[i];
-            }
-            if (groupsTable.find(groupID) == groupsTable.end())
-                cout << "Group doesn't exist. Please check.\n";
-            else
-            {
-                int flag = 0;
-                //auto it = ;
-                for (auto it : groupsTable[groupID].second)
-                {
-                    if (it == userID)
-                    {
-                        flag = 1;
-                        break;
-                    }
-
-                    // cout << (it.first) << ": " << it.second.first;
-                    // for (auto it2 : it.second.second)
-                    //     cout << " " << it2 << " ";
-                    // cout << endl;
-                }
-                if (flag == 0)
-                    cout << "You are not member of the group. So you cannot see the sharable files\n";
-                if (flag == 1)
-                {
-                    string s = "";
-                    for (auto it : filesInfo)
-                    {
-                        for (auto it2 : it.second)
-                        {
-                            if (it2.first == groupID)
-                            {
-                                cout << it.first << " ";
-                                //s+=it.first+" ";
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            cout << endl;
-            // bzero(buf, sizeof(buf));
-            // strcpy(buf,s.c_str());
-            // bytes_transferred = write(comm_socket_fd, buf, sizeof(buf));
-        }
-        else if (cmd == "download_file")
-        {
-            if (current_user == "")
-            {
-                cout << "Please login first\n";
-            }
-            else
-            {
-                groupID = "";
-                for (i = i + 1; i < sizeof(buf); i++)
-                {
-                    if (buf[i] == ' ')
-                    {
-                        break;
-                    }
-                    groupID += buf[i];
-                }
-                string filepath = "";
-                for (i = i + 1; i < sizeof(buf); i++)
-                {
-                    if (buf[i] == ' ')
-                    {
-                        break;
-                    }
-                    filepath += buf[i];
-                }
-
-                string destpath = "";
-                for (i = i + 1; i < sizeof(buf); i++)
-                {
-                    if (buf[i] == '\0')
-                    {
-                        break;
-                    }
-                    destpath += buf[i];
-                }
-                if (filesInfo.find(filepath) == filesInfo.end())
-                {
-                    cout << "File doesn't exist\n";
-                }
-                else
-                {
-                    //filesInfo[filepath].push_back({groupID, {"127.0.0.1", port_no}});
-                    //list<string> l(filesInfo[filepath]);
-                    //cout << groupID << ":\n";
-                    for (auto it : filesInfo[filepath])
-                    {
-                        if (groupID == it.first)
-                        {
-                            downloads.push_back(filepath);
-                            cout << "seeder port stored in table:" << it.second.second << endl;
-                            string temps = to_string(it.second.second);
-                            //cout << "\nseeder port stored in table:" << temps;
-                            char buf[temps.length() + 1];
-                            strcpy(buf, temps.c_str());
-                            //cout << "\nseeder port stored in table:" << buf<<endl;
-                            int sent_recv_bytes = write(a->comm_socket_fd, buf, sizeof(buf));
-                            break;
-                        }
-                    }
-                    cout << endl;
-                }
-            }
-        }
-        else if (cmd == "show_downloads")
-        {
-            //string s = "";
-            for (auto it : downloads)
-                cout << it + " ";
-            cout << endl;
-            // bzero(buf, sizeof(buf));
-            // strcpy(buf, s.c_str());
-            // bytes_transferred = write(comm_socket_fd, buf, sizeof(buf));
-            // bzero(buf, sizeof(buf));
-        }
-        else if (cmd == "stop_share")
-        {
-            groupID = "";
-            for (i = i + 1; i < sizeof(buf); i++)
-            {
-                if (buf[i] == ' ')
-                {
-                    break;
-                }
-                groupID += buf[i];
-            }
-            string filepath = "";
-            for (i = i + 1; i < sizeof(buf); i++)
-            {
-                if (buf[i] == '\0')
-                {
-                    break;
-                }
-                filepath += buf[i];
-            }
-            //string s = "";
-            int flag = 0;
-            // for (auto it : filesInfo[filepath])
-            // {
-            //     if (it.first == groupID)
-            //     {
-            //         cout << "stopped sharing of " << filepath << " in " << groupID << " " << endl;
-            //         filesInfo[filepath].erase(it);
-            //         flag = 1;
-            //     }
-            // }
-            for (auto it = filesInfo[filepath].begin(); it != filesInfo[filepath].end(); it++)
-            {
-                if ((*it).first == groupID)
-                {
-                    cout << "stopped sharing of " << filepath << " in " << groupID << " " << endl;
-                    filesInfo[filepath].erase(it);
-                    flag = 1;
-                    break;
-                }
-            }
-            if (flag == 0)
-                cout << "File is already not sharing in " << groupID << endl;
-            // bzero(buf, sizeof(buf));
-            // strcpy(buf, s.c_str());
-            // bytes_transferred = write(comm_socket_fd, buf, sizeof(buf));
-            // bzero(buf, sizeof(buf));
-        }
-        else
-        {
-            cout << "Not valid command. Please check\n";
-            // bzero(buf, sizeof(buf));
-            // strcpy(buf, s.c_str());
-            // bytes_transferred = write(comm_socket_fd, buf, sizeof(buf));
-            // bzero(buf, sizeof(buf));
-        }
-        //cout<<"rcevd:"<<buf<<endl;
-        // printf("Server recvd %lld bytes from client %s:%u\n", bytes_transferred,
-        //         inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-        //if(bytes_transferred > 0)
-        //cout<<"received from client:"<<buf<<endl;
-        if (bytes_transferred == 0)
-        {
-            close(comm_socket_fd);
-            break;
-        }
-    }
+	struct stat itr;
+	if (stat(stringS.c_str(), &itr) == 0)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
 }
 
-void serverInit()
+vector<string> splitString(string stringS, string x)
 {
+	string temp;
+	size_t position = 0;
+	vector<string> ans;
+	string strt="";
+	while ((position = stringS.find(x)) != string::npos)
+	{
+		temp = stringS.substr(0, position);
+		ans.push_back(temp);
+		strt;
+		stringS.erase(0, position + x.length());
 
-   
-    long long int master_sock_tcp_fd = 0, 
-        bytes_transferred = 0,
+	}
 
-                  opt = 1;
-    socklen_t addr_len = 0;
-    long long int comm_socket_fd = 0; 
-    fd_set readfds;                   
-    struct sockaddr_in server_addr,
-        client_addr;
+	ans.push_back(stringS);
+	strt;
+	return ans;
+}
 
-    
-    if ((master_sock_tcp_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
-    {
-        printf("socket creation failed\n");
-        exit(1);
+pair<int,string> getIPAndPortFromFileName(char* fn){
+	string filename = string(fn);
+    string line="";
+    ifstream input_file(filename);
+
+    if (input_file.is_open()) {
+		getline(input_file, line);
+		vector<string> trackerIP = splitString(line,":");
+		string i="port";
+		string ip=trackerIP[0];
+		int port= stoi(trackerIP[1]);
+		string make_pai="pair";
+		return make_pair(port,ip);
+        
     }
 
-    server_addr.sin_family = AF_INET;    
-    server_addr.sin_port = serv_port_num;  
-    server_addr.sin_addr.s_addr = INADDR_ANY; 
+	else{
+		
+		printf("Cannot open the file");
+		return make_pair(0,"0.0.0.0");
+	}
+}
 
-    addr_len = sizeof(struct sockaddr);
-    if (bind(master_sock_tcp_fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr)) == -1)
-    {
-        printf("socket bind failed\n");
-        return;
-    }
+void *close_server(void *arg)
+{
+	while (true)
+	{
+		string quit;
+		getline(cin, quit);
+		if (quit == "quit")
+		{
+			exit(0);
+		}
+	}
+}
 
-    if (listen(master_sock_tcp_fd, 5) < 0)
-    {
-        printf("listen failed\n");
-        return;
-    }
+unordered_map<string, unordered_map<string, set< string>>> uploadList;
 
-    while (1)
-    {
+int check_login_validate(string user_id, string password)
+{
+	if (login.find(user_id) == login.end())
+		return -1;
 
-        FD_ZERO(&readfds);  
-        FD_SET(master_sock_tcp_fd, &readfds); 
+	if (login[user_id] != password)
+		return -1;
 
-        printf("blocked on select System call...\n");
+	if (checklogin.find(user_id) == checklogin.end())
+	{
+		checklogin.insert({ user_id, true });
+		return 0;
+	}
+	else
+	{
+		if (checklogin[user_id] == false)
+		{
+			checklogin[user_id] = true;
+			return 0;
+		}
+		else
+		{
+			return 1;
+		}
+	}
 
-        select(master_sock_tcp_fd + 1, &readfds, NULL, NULL, NULL); 
-        if (FD_ISSET(master_sock_tcp_fd, &readfds))
-        {
-            
-            printf("New connection recieved recvd, accept the connection. Client and Server completes TCP-3 way handshake at this point\n");
+	return 0;
+}
 
-            
-            comm_socket_fd = accept(master_sock_tcp_fd, (struct sockaddr *)&client_addr, &addr_len);
-            if (comm_socket_fd < 0)
-            {
-                printf("accept error : errno = %d\n", errno);
-                exit(0);
-            }
+void upload_File(string file_path, string group_id, int client_socket, string client_id)
+{
+	if (!ispath(file_path))
+	{
+		write(client_socket, "No file exists", 14);
+	}
+	else if (grp_members.find(group_id) == grp_members.end())
+	{
+		write(client_socket, "No Group Exists", 16);
+	}
+	else if (grp_members[group_id].find(client_id) == grp_members[group_id].end())
+	{
+		write(client_socket, "No client Present", 18);
+	}
+	else
+	{
+		//512kb per chunk
+		write(client_socket, "Uploading", 9);
+		char file_buffer[524288] = { 0 };
+		string strt="file";
+		if (read(client_socket, file_buffer, 524288))
+		{
+			strt+="";
+			if (string(file_buffer) == "error") return;
+			vector<string> current_file_details = splitString(string(file_buffer), "*$*");
+			string filename = splitString(string(current_file_details[0]), "/").back();
+			string hashes = "";
+			for (size_t i = 4; i < current_file_details.size(); i++)
+			{
+				hashes += current_file_details[i];
+				if (i != current_file_details.size() - 1) hashes += "*$*";
+			}
+			//cout<<string(file_buffer)<<endl<<hashes<<endl;
+			piece_wise[filename] = hashes;
 
-            printf("Connection accepted from client : %s:%u\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-            // memset(buf, 0, sizeof(buf));
-            // bytes_transferred = read(comm_socket_fd, &buf, sizeof(buf));
-            // cout << "hii" << endl;
-            // printf("%s", buf);
-            // bytes_transferred = write(comm_socket_fd, &buf, sizeof(buf));
-            /* Create a new thread to service this new client*/
-            /* Server infinite loop for servicing the client*/
-            pthread_t client_thread;
-            pthread_attr_t attr;
-            pthread_attr_init(&attr);
-            pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-            struct client_info *clientDetails = (struct client_info *)calloc(1, sizeof(struct client_info));
-            clientDetails->comm_socket_fd = comm_socket_fd;
-            memcpy(&clientDetails->client_addr, &client_addr, sizeof(struct sockaddr_in));
-            pthread_create(&client_thread, &attr, service_client_module, (void *)clientDetails);
-        }
-    }
+			if (uploadList[group_id].find(filename) != uploadList[group_id].end())
+			{
+				uploadList[group_id][filename].insert(client_id);
+			}
+			else
+			{
+				uploadList[group_id].insert({ filename,
+					{
+						client_id
+					} });
+			}
+
+			cur_file_size[filename] = current_file_details[2];
+
+			write(client_socket, "Uploaded", 8);
+		}
+	}
+}
+
+void download_File(string group_id, string file_name, string file_path, int client_socket, string client_id)
+{
+	if (!ispath(file_path))
+	{
+		write(client_socket, "No file exists", 14);
+	}
+	else if (grp_members.find(group_id) == grp_members.end())
+	{
+		write(client_socket, "No Group Exists", 16);
+	}
+	else if (grp_members[group_id].find(client_id) == grp_members[group_id].end())
+	{
+		write(client_socket, "No client Present", 18);
+	}
+	else
+	{
+		string strt;
+		char file_buffer[524288] = { 0 };
+		write(client_socket, "Downloading", 13);
+		if (read(client_socket, file_buffer, 524288))
+		{
+			vector<string> current_file_details = splitString(string(file_buffer), "*$*");
+			string message_reply = "";
+			if (uploadList[group_id].find(current_file_details[0]) != uploadList[group_id].end())
+			{
+				for (auto i: uploadList[group_id][current_file_details[0]])
+				{
+					if (checklogin[i])
+					{
+						message_reply += convert_port[i] + "*$*";
+					}
+				}
+				message_reply += cur_file_size[current_file_details[0]]+"&&&"+piece_wise[current_file_details[0]];
+				
+				write(client_socket, &message_reply[0], message_reply.length());
+				//cout<<message_reply<<endl;
+				uploadList[group_id][file_name].insert(client_id);
+			}
+			else
+			{
+				write(client_socket, "File not found", 14);
+			}
+		}
+	}
+}
+
+//connection of clients using threads and handle commands
+void connection(int client_socket)
+{
+	string client_id, client_group_id, current, input;
+	cout << "Thread created" << to_string(client_socket) << "\n";
+
+	while (true)
+	{
+		char buffer[2048] = { 0 };
+		vector<string> input_array;
+		if (read(client_socket, buffer, 2048) <= 0)
+		{
+			checklogin[client_id] = false;
+			close(client_socket);
+			break;
+		}
+
+		input = string(buffer);
+		cout << "Request from client" << input << "\n";
+		stringstream stringarray(input);
+
+		while (stringarray >> current)
+		{
+			input_array.push_back(current);
+		}
+
+		if (input_array[0] == "create_user")
+		{
+			if (input_array.size() == 3)
+			{
+				string user_id=input_array[1];
+				string password=input_array[2];
+				int res;
+				if (login.find(user_id) == login.end())
+				{
+					login.insert({ user_id, password });
+					res = 0;
+				}
+				else
+				{
+					res = -1;
+				}
+
+				if (res == -1)
+				{
+					write(client_socket, "User already exists", 20);
+				}
+				else
+				{
+					write(client_socket, "Account Sucessfully Created", 28);
+				}
+			}
+			else
+			{
+				write(client_socket, "Invalid Arguments", 18);
+			}
+		}
+		else if (input_array[0] == "login")
+		{
+			if (input_array.size() == 3)
+			{
+				char login_buffer[1024];
+				string cur_client_address;
+				client_id = input_array[1];
+				int res = check_login_validate(input_array[1], input_array[2]);
+				if (res == 1)
+				{
+					write(client_socket, "User has already logged in", 28);
+				}
+				else if (res == 0)
+				{
+					write(client_socket, "Login Successful", 17);
+					read(client_socket, login_buffer, 1024);
+					cur_client_address = string(login_buffer);
+					convert_port[client_id] = cur_client_address;
+				}
+				else
+				{
+					write(client_socket, "User_id/Password is incorrect", 30);
+				}
+			}
+			else
+			{
+				write(client_socket, "Invalid Arguments", 18);
+			}
+		}
+		else if (input_array[0] == "logout")
+		{
+			checklogin[client_id] = false;
+			write(client_socket, "Logout Successful", 20);
+		}
+		else if (input_array[0] == "upload_file")
+		{
+			if (input_array.size() != 3)
+			{
+				write(client_socket, "Invalid Arguments", 18);
+				//close(client_socket);
+				
+			}
+
+			else{
+				upload_File(input_array[1], input_array[2], client_socket, client_id);
+			}
+		}
+		else if (input_array[0] == "download_file")
+		{
+			if (input_array.size() != 4)
+			{
+				write(client_socket, "Invalid Arguments", 18);
+			}
+			else{
+			download_File(input_array[1], input_array[2], input_array[3], client_socket, client_id);
+			}
+		}
+		else if (input_array[0] == "accept_request")
+		{
+			if (input_array.size() != 3)
+			{
+				write(client_socket, "Invalid Arguments", 18);
+			}
+
+			else{string group_id = input_array[1];
+			string user_id = input_array[2];
+			if (admin_groups.find(group_id) == admin_groups.end())
+			{
+				write(client_socket, "No group found", 13);
+			}
+			else if (admin_groups.find(group_id)->second != client_id)
+			{
+				write(client_socket, "You are not admin", 17);
+			}
+			else
+			{
+				write(client_socket, "Request accepted.", 18);
+				grp_members[group_id].insert(user_id);
+				grp_requests[group_id].erase(user_id);
+			}
+			}
+		}
+		else if (input_array[0] == "create_group")
+		{
+			if (input_array.size() != 2)
+			{
+				write(client_socket, "Invalid Arguments", 18);
+			}
+
+			else{string group_id = input_array[1];
+			int res=0;
+			for (string i: group_list)
+			{
+				if (i == group_id)
+				{
+					write(client_socket, "Group Already Exists", 21);
+					res=1;
+				}
+			}
+
+			if(res==0){group_list.push_back(group_id);
+			admin_groups.insert({ group_id, client_id });
+			grp_members[group_id].insert(client_id);
+			client_group_id = input_array[1];
+			write(client_socket, "Group Successfully Created", 35);
+			}
+			}
+
+		}
+		else if (input_array[0] == "join_group")
+		{
+			if (input_array.size() != 2)
+			{
+				write(client_socket, "Invalid Arguments", 18);
+			}
+
+			else{string group_id = input_array[1];
+			if (admin_groups.find(group_id) == admin_groups.end())
+			{
+				write(client_socket, "Wrong Group ID", 14);
+			}
+			else if (grp_members[group_id].find(client_id) != grp_members[group_id].end())
+			{
+				write(client_socket, "You are already present in group", 32);
+			}
+			else
+			{
+				grp_requests[group_id].insert(client_id);
+				write(client_socket, "Group request successfully sent", 31);
+			}
+			}
+		}
+		else if (input_array[0] == "list_requests")
+		{
+			if (input_array.size() != 2)
+			{
+				write(client_socket, "Invalid Arguments", 18);
+			}
+
+			else{string group_id = input_array[1];
+			string requests = "";
+
+			if (admin_groups.find(group_id) == admin_groups.end())
+			{
+				write(client_socket, "No group found*$*", 18);
+			}
+
+			if (admin_groups[group_id] != client_id)
+			{
+				write(client_socket, "You are not admin*$*", 20);
+			}
+			else if (grp_requests[group_id].size() == 0)
+			{
+				write(client_socket, "No requests*$*", 15);
+			}
+			else
+			{
+				for (auto i = grp_requests[group_id].begin(); i != grp_requests[group_id].end(); i++)
+				{
+					requests += string(*i) + "*$*";
+				}
+
+				write(client_socket, &requests[0], requests.length());
+			}
+			}
+		}
+		else if (input_array[0] == "leave_group")
+		{
+			if (input_array.size() != 2)
+			{
+				write(client_socket, "Invalid Arguments", 18);
+			}
+			else{
+			string group_id=input_array[1];
+			if (admin_groups.find(group_id) == admin_groups.end())
+			{
+				write(client_socket, "No group found", 14);
+			}
+			
+			else if (grp_members[group_id].find(client_id) != grp_members[group_id].end())
+			{
+				int res=0;
+				if (admin_groups[group_id]!= client_id)
+				{
+				grp_members[group_id].erase(client_id);
+				cout<<"";
+				write(client_socket, "Group left succesfully", 23);
+				int vart=0;
+				}
+				else{
+				write(client_socket, "You are admin, you cannot leave", 35);
+				}
+			}
+			else
+			{
+				int vart=-1;
+				if(vart>0)
+				{
+					printf("\n");
+				}
+				vart+=1;
+				write(client_socket, "You are not part of group", 25);
+			}
+			}
+		}
+		else if (input_array[0] == "list_groups")
+		{  
+			int vart=-1;
+			if (input_array.size() != 1)
+			{
+				if(vart>0)
+				{
+					cout<<"Invalid arguments"<<endl;
+				}
+				write(client_socket, "Invalid Arguments", 18);
+				vart+=1;
+			}
+
+			else if (group_list.size() == 0)
+			{
+				write(client_socket, "No groups avail*$*", 18);
+			}
+
+			else{string groups = "";
+			for (int i = 0; i < group_list.size(); i++)
+			{  
+				while(i<0)
+				{
+					cout<<groups;
+					cout<<endl;
+
+				}
+				groups += group_list[i] + "*$*";
+			}
+			if(vart==-9999)
+				printf("Done");
+
+			write(client_socket, &groups[0], groups.length() + 1);
+			}
+
+		}
+		else if (input_array[0] == "list_files")
+		{
+			if (input_array.size() != 2)
+			{
+				write(client_socket, "Invalid Arguments", 18);
+			}
+
+			else{string group_id = input_array[1];
+			if (admin_groups.find(group_id) == admin_groups.end())
+			{
+				write(client_socket, "No group found*$*", 18);
+			}
+			else if (uploadList[group_id].size() != 0)
+			{
+				string list_files_reply = "";
+				for (auto i: uploadList[group_id])
+				{
+					list_files_reply += i.first + "*$*";
+				}
+
+				write(client_socket, &list_files_reply[0], list_files_reply.length());
+
+			}
+			else
+			{
+				write(client_socket, "No files found*$*", 18);
+			}
+			}
+		}
+		else if (input_array[0] == "stop_share")
+		{
+			if (input_array.size() != 3)
+			{
+				write(client_socket, "Invalid Arguments", 17);
+			}
+			else{
+			string group_id = input_array[1];
+			string file_name = input_array[2];
+			if (admin_groups.find(group_id) == admin_groups.end())
+			{
+				write(client_socket, "No group found", 13);
+			}
+			else if (uploadList[group_id].find(file_name) != uploadList[group_id].end())
+			{
+				uploadList[group_id][file_name].erase(client_id);
+				write(client_socket, "Stopped sharing the file from group", 35);
+				if (uploadList[group_id][file_name].size() == 0)
+				{
+					uploadList[group_id].erase(file_name);
+				}
+			}
+			else
+			{
+				write(client_socket, "No file shared in the group", 28);
+			}
+			}
+		}
+		else if (input_array[0] == "show_downloads")
+		{
+			write(client_socket, "Downloads", 10);
+		}
+		else
+		{
+			write(client_socket, "Invalid Command", 16);
+		}
+	}
+
+	close(client_socket);
 }
 
 int main(int argc, char *argv[])
 {
-    string s = (string)argv[2];
-    int num = stoi(s);
-    serv_port_num = htons(num);
-    s = argv[1];
-    strcpy(OWN_IP_ADDRESS, s.c_str());
-    serverInit();
-    return 0;
+	int socket_id;
+	struct sockaddr_in server_addr;
+	//tracker_ip = argv[1];
+	pthread_t close_thread;
+	pair<int,string> p=getIPAndPortFromFileName(argv[1]);
+	tracker_ip = p.second;
+	tracker_port = p.first;//stoi(argv[4]);
+	//tracker_port = stoi(argv[2]);
+	int opt = 1;
+	int addrlen = sizeof(server_addr);
+
+	if ((socket_id = socket(AF_INET, SOCK_STREAM, 0)) == 0)
+	{
+		printf("socket creation failed\n");
+		return -1;
+	}
+
+	cout << "Tracker socket created.\n";
+
+	if (setsockopt(socket_id, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+	{
+		printf("setsockopt of tracker\n");
+		return -1;
+	}
+
+	server_addr.sin_family = AF_INET;
+	int vart;
+	server_addr.sin_port = htons(tracker_port);
+	if (inet_pton(AF_INET, &tracker_ip[0], &server_addr.sin_addr) <= 0)
+	{
+		
+		printf("\nInvalid address/ Address not supported \n");
+		return -1;
+	}
+	if (bind(socket_id, (SA*) &server_addr, sizeof(server_addr)) < 0)
+	{
+		printf("Binding failed\n");
+		return -1;
+	}
+
+
+	printf("\n");	printf("Binding completed.\n");
+
+	//queue_size of 5
+	if (listen(socket_id, 5) < 0)
+	{
+		printf("listen failed\n");
+		return -1;
+	}
+
+	printf("Tracker Listening for clients\n");
+
+	vector<thread> threads;
+
+	//checks for command quit
+	if (pthread_create(&close_thread, NULL, close_server, NULL) == -1)
+	{
+		printf("pthread creation error\n");
+		return -1;
+	}
+
+	while (true)
+	{
+		int client_socket;
+
+		if ((client_socket = accept(socket_id, (SA*) &server_addr, (socklen_t*) &addrlen)) < 0)
+		{
+			printf("Acceptance error during connection of client\n");
+		}
+       printf("\n");
+	   string str;
+		printf("Connection of client Accepted");
+		printf("\n");
+
+		//adding all clients to tracker in while loop
+		threads.push_back(thread(connection, client_socket));
+	}
+
+
+	//making sure all threads are executed
+	for (auto i = threads.begin(); i != threads.end(); i++)
+	{
+		if (i->joinable())
+		{
+			strt;
+			i->join();
+		}
+		
+	}
+
+	printf("Exit\n");
+	return 0;
 }
